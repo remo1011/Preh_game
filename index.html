@@ -348,7 +348,7 @@ press("bRetry", newGame);
 press("bResume", () => { state="play"; show(null); });
 press("bNext", () => {
   levelIdx++;
-  if(levelIdx >= LEVELS.length){ score=0; lives=3; levelIdx=0; }
+  if(levelIdx >= LEVELS.length){ score=0; lives=800; levelIdx=0; }
   loadLevel(levelIdx); state="play"; show(null);
 });
 press("bPause", togglePause);
