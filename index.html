@@ -19,10 +19,11 @@
     touch-action:none;
     padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
   }
-  #app{width:100%;max-width:900px;height:100%;display:flex;flex-direction:column}
-  #stage{position:relative;width:100%;background:#000;flex:0 0 auto}
-  canvas{display:block;width:100%;height:auto;aspect-ratio:2/1;image-rendering:pixelated;image-rendering:crisp-edges}
-  #sysbtns{position:absolute;top:6px;right:6px;display:flex;gap:6px}
+  #app{position:relative;width:100%;max-width:1200px;height:100%;display:flex;flex-direction:column}
+  #stage{flex:1 1 auto;min-height:0;width:100%;display:flex;align-items:center;justify-content:center;padding:4px}
+  #frame{position:relative;line-height:0}
+  canvas{display:block;background:#000;image-rendering:pixelated;image-rendering:crisp-edges;border-radius:3px}
+  #sysbtns{position:absolute;top:6px;right:6px;display:flex;gap:6px;z-index:3}
   .sys{
     width:34px;height:34px;border-radius:8px;background:rgba(12,18,26,.72);
     border:2px solid #46566e;color:#f2e8d5;font-size:15px;line-height:1;
@@ -46,8 +47,19 @@
   .big:active{background:#2a9179;transform:translateY(2px)}
 
   #pad{
-    flex:1 1 auto;width:100%;display:flex;align-items:center;justify-content:space-between;
-    gap:10px;padding:10px 14px;background:#141a24;border-top:2px solid #26303f;min-height:110px
+    flex:0 0 auto;width:100%;display:flex;align-items:center;justify-content:space-between;
+    gap:10px;padding:10px 14px;background:#141a24;border-top:2px solid #26303f
+  }
+  /* na šířku: tlačítka plavou přes spodek plátna, ať se vejde všechno */
+  @media (orientation:landscape) and (max-height:620px){
+    #stage{padding:0}
+    #pad{
+      position:absolute;left:0;right:0;bottom:0;z-index:5;
+      background:transparent;border-top:none;pointer-events:none;
+      padding:0 18px calc(12px + env(safe-area-inset-bottom))
+    }
+    #pad .grp{pointer-events:auto}
+    .btn{width:clamp(52px,11vw,66px);height:clamp(52px,11vw,66px);opacity:.9;box-shadow:0 3px 10px rgba(0,0,0,.5)}
   }
   .grp{display:flex;gap:10px}
   .btn{
@@ -64,8 +76,10 @@
 <body>
 <div id="app">
   <div id="stage">
+   <div id="frame">
     <canvas id="c" width="800" height="400"></canvas>
     <div id="sysbtns">
+      <div class="sys" id="bFull">⛶</div>
       <div class="sys" id="bSound">♪</div>
       <div class="sys" id="bPause">❚❚</div>
     </div>
@@ -92,6 +106,7 @@
       <p id="overInfo"></p>
       <button class="big" id="bRetry">Hrát znovu</button>
     </div>
+   </div>
   </div>
 
   <div id="pad">
@@ -314,6 +329,31 @@ document.getElementById("bNext").onclick = () => {
 };
 document.getElementById("bPause").onclick = togglePause;
 document.getElementById("bSound").onclick = toggleSound;
+
+/* ---------------- přizpůsobení obrazovce ---------------- */
+const stageEl = document.getElementById("stage");
+const frameEl = document.getElementById("frame");
+function fit(){
+  const r = stageEl.getBoundingClientRect();
+  const s = Math.min(r.width/W, r.height/H);
+  const w = Math.max(200, Math.floor(W*s)), h = Math.floor(H*s);
+  cvs.style.width = w+"px";  cvs.style.height = h+"px";
+  frameEl.style.width = w+"px"; frameEl.style.height = h+"px";
+}
+addEventListener("resize", fit);
+addEventListener("orientationchange", () => setTimeout(fit, 250));
+if(window.visualViewport) visualViewport.addEventListener("resize", fit);
+fit();
+
+const fullBtn = document.getElementById("bFull");
+const canFull = !!(document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen);
+if(!canFull) fullBtn.style.display = "none";   // iPhone Safari fullscreen API nemá
+fullBtn.onclick = () => {
+  const el = document.documentElement;
+  if(document.fullscreenElement || document.webkitFullscreenElement) (document.exitFullscreen || document.webkitExitFullscreen)?.call(document);
+  else (el.requestFullscreen || el.webkitRequestFullscreen)?.call(el);
+  setTimeout(fit, 300);
+};
 
 function togglePause(){
   if(state==="play"){ state="pause"; show("pause"); }
