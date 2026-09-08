@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Prehistorik Web Mini</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      background: #111;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      overflow: hidden;
+      font-family: monospace;
+      color: #fff;
+    }
+    #game-container {
+      position: relative;
+      width: 100%;
+      max-width: 800px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    canvas {
+      background: #4a90e2;
+      border: 2px solid #333;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+      width: 100%;
+      height: auto;
+      aspect-ratio: 800 / 400;
+      image-rendering: pixelated;
+    }
+    .hud {
+      position: absolute;
+      top: 10px;
+      left: 15px;
+      font-size: 18px;
+      font-weight: bold;
+      text-shadow: 2px 2px 0 #000;
+      pointer-events: none;
+    }
+    .controls {
+      display: flex;
+      justify-content: space-between;
+      width: 100%;
+      max-width: 800px;
+      padding: 12px 20px;
+      box-sizing: border-box;
+      background: #1a1a1a;
+    }
+    .btn-group {
+      display: flex;
+      gap: 12px;
+    }
+    .btn {
+      width: 60px;
+      height: 60px;
+      border-radius: 12px;
+      background: #2c3e50;
+      border: 2px solid #34495e;
+      color: white;
+      font-size: 24px;
+      font-weight: bold;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      touch-action: manipulation;
+    }
+    .btn:active {
+      background: #1abc9c;
+      transform: scale(0.95);
+    }
+    .btn-action {
+      background: #c0392b;
+      border-color: #e74c3c;
+    }
+    .btn-action:active {
+      background: #e67e22;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="game-container">
+    <canvas id="gameCanvas" width="800" height="400"></canvas>
+    <div class="hud" id="hud">SKÓRE: 0 | ŽIVOTY: 3</div>
+  </div>
+
+  <div class="controls">
+    <div class="btn-group">
+      <div class="btn" id="btnLeft">◀</div>
+      <div class="btn" id="btnRight">▶</div>
+    </div>
+    <div class="btn-group">
+      <div class="btn btn-action" id="btnAttack">⚔️</div>
+      <div class="btn btn-action" id="btnJump">▲</div>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    const hud = document.getElementById("hud");
+
+    const GRAVITY = 0.55;
+    let cameraX = 0;
+    let score = 0;
+    let lives = 3;
+    let gameOver = false;
+
+    const keys = { left: false, right: false, up: false, attack: false };
+
+    const player = {
+      x: 50,
+      y: 200,
+      vx: 0,
+      vy: 0,
+      width: 34,
+      height: 48,
+      speed: 4,
+      jumpPower: -11,
+      grounded: false,
+      facing: 1,
+      isAttacking: false,
+      attackTimer: 0
+    };
+
+    const platforms = [
+      { x: 0, y: 340, w: 2200, h: 60, type: "ground" },
+      { x: 200, y: 260, w: 120, h: 20, type: "rock" },
+      { x: 380, y: 200, w: 100, h: 20, type: "rock" },
+      { x: 550, y: 240, w: 140, h: 20, type: "rock" },
+      { x: 800, y: 220, w: 160, h: 20, type: "rock" },
+      { x: 1050, y: 180, w: 120, h: 20, type: "rock" },
+      { x: 1250, y: 240, w: 180, h: 20, type: "rock" },
+      { x: 1550, y: 210, w: 140, h: 20, type: "rock" },
+      { x: 1800, y: 250, w: 200, h: 20, type: "rock" }
+    ];
+
+    const trees = [
+      { x: 120, y: 180, hit: false },
+      { x: 480, y: 180, hit: false },
+      { x: 920, y: 180, hit: false },
+      { x: 1400, y: 180, hit: false }
+    ];
+
+    let items = [
+      { x: 240, y: 220, w: 20, h: 20, collected: false, type: "meat" },
+      { x: 600, y: 200, w: 20, h: 20, collected: false, type: "meat" },
+      { x: 1100, y: 140, w: 20, h: 20, collected: false, type: "fruit" },
+      { x: 1600, y: 170, w: 20, h: 20, collected: false, type: "fruit" }
+    ];
+
+    let enemies = [
+      { x: 320, y: 300, w: 32, h: 32, minX: 250, maxX: 450, vx: 1.5, dead: false, type: "dino" },
+      { x: 700, y: 300, w: 32, h: 32, minX: 600, maxX: 850, vx: -1.5, dead: false, type: "dino" },
+      { x: 1300, y: 300, w: 32, h: 32, minX: 1200, maxX: 1450, vx: 2, dead: false, type: "dino" },
+      { x: 1700, y: 300, w: 32, h: 32, minX: 1600, maxX: 1900, vx: -2, dead: false, type: "dino" }
+    ];
+
+    // Dotykové ovládání
+    const bindTouch = (id, key) => {
+      const btn = document.getElementById(id);
+      btn.addEventListener("touchstart", (e) => { e.preventDefault(); keys[key] = true; });
+      btn.addEventListener("touchend", (e) => { e.preventDefault(); keys[key] = false; });
+      btn.addEventListener("mousedown", () => { keys[key] = true; });
+      btn.addEventListener("mouseup", () => { keys[key] = false; });
+    };
+
+    bindTouch("btnLeft", "left");
+    bindTouch("btnRight", "right");
+    bindTouch("btnJump", "up");
+    bindTouch("btnAttack", "attack");
+
+    // Klávesové zkratky pro PC
+    window.addEventListener("keydown", (e) => {
+      if (e.code === "ArrowLeft" || e.code === "KeyA") keys.left = true;
+      if (e.code === "ArrowRight" || e.code === "KeyD") keys.right = true;
+      if (e.code === "ArrowUp" || e.code === "KeyW" || e.code === "Space") keys.up = true;
+      if (e.code === "KeyF" || e.code === "KeyE") keys.attack = true;
+    });
+
+    window.addEventListener("keyup", (e) => {
+      if (e.code === "ArrowLeft" || e.code === "KeyA") keys.left = false;
+      if (e.code === "ArrowRight" || e.code === "KeyD") keys.right = false;
+      if (e.code === "ArrowUp" || e.code === "KeyW" || e.code === "Space") keys.up = false;
+      if (e.code === "KeyF" || e.code === "KeyE") keys.attack = false;
+    });
+
+    function update() {
+      if (gameOver) return;
+
+      if (keys.left) {
+        player.vx = -player.speed;
+        player.facing = -1;
+      } else if (keys.right) {
+        player.vx = player.speed;
+        player.facing = 1;
+      } else {
+        player.vx = 0;
+      }
+
+      if (keys.up && player.grounded) {
+        player.vy = player.jumpPower;
+        player.grounded = false;
+      }
+
+      if (keys.attack && !player.isAttacking) {
+        player.isAttacking = true;
+        player.attackTimer = 12;
+
+        const clubX = player.facing === 1 ? player.x + player.width : player.x - 30;
+        const clubY = player.y + 10;
+        const clubW = 30;
+        const clubH = 30;
+
+        // Útok na nepřátele
+        enemies.forEach(en => {
+          if (!en.dead && clubX < en.x + en.w && clubX + clubW > en.x && clubY < en.y + en.h && clubY + clubH > en.y) {
+            en.dead = true;
+            score += 100;
+          }
+        });
+
+        // Mlácení do stromů pro tajný bonus
+        trees.forEach(tr => {
+          if (!tr.hit && clubX < tr.x + 60 && clubX + clubW > tr.x && clubY < tr.y + 160 && clubY + clubH > tr.y) {
+            tr.hit = true;
+            items.push({ x: tr.x + 20, y: tr.y + 40, w: 20, h: 20, collected: false, type: "meat" });
+            score += 50;
+          }
+        });
+      }
+
+      if (player.attackTimer > 0) {
+        player.attackTimer--;
+      } else {
+        player.isAttacking = false;
+      }
+
+      player.vy += GRAVITY;
+      player.x += player.vx;
+      player.y += player.vy;
+
+      player.grounded = false;
+
+      // Kolize s plošinami
+      platforms.forEach(p => {
+        if (
+          player.x < p.x + p.w &&
+          player.x + player.width > p.x &&
+          player.y + player.height >= p.y &&
+          player.y + player.height <= p.y + p.h + player.vy &&
+          player.vy >= 0
+        ) {
+          player.grounded = true;
+          player.vy = 0;
+          player.y = p.y - player.height;
+        }
+      });
+
+      // Hranice mapy vlevo
+      if (player.x < 0) player.x = 0;
+
+      // Nepřátelé
+      enemies.forEach(en => {
+        if (!en.dead) {
+          en.x += en.vx;
+          if (en.x < en.minX || en.x > en.maxX) en.vx *= -1;
+
+          // Zásah hráče
+          if (
+            player.x < en.x + en.w &&
+            player.x + player.width > en.x &&
+            player.y < en.y + en.h &&
+            player.y + player.height > en.y
+          ) {
+            lives--;
+            player.x = Math.max(0, player.x - 60);
+            player.y = 150;
+            if (lives <= 0) {
+              gameOver = true;
+            }
+          }
+        }
+      });
+
+      // Sběr jídla
+      items.forEach(it => {
+        if (!it.collected &&
+            player.x < it.x + it.w &&
+            player.x + player.width > it.x &&
+            player.y < it.y + it.h &&
+            player.y + player.height > it.y) {
+          it.collected = true;
+          score += 150;
+        }
+      });
+
+      // Kamera sleduje hráče
+      cameraX = player.x - canvas.width / 3;
+      if (cameraX < 0) cameraX = 0;
+
+      hud.innerText = `SKÓRE: ${score} | ŽIVOTY: ${lives}` + (gameOver ? " - KONEC HRY (Obnov stránku)" : "");
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      ctx.save();
+      ctx.translate(-cameraX, 0);
+
+      // Pozadí - stromy
+      trees.forEach(tr => {
+        ctx.fillStyle = "#8B4513";
+        ctx.fillRect(tr.x + 15, tr.y + 60, 25, 100);
+        ctx.fillStyle = tr.hit ? "#556B2F" : "#228B22";
+        ctx.beginPath();
+        ctx.arc(tr.x + 28, tr.y + 50, 45, 0, Math.PI * 2);
+        ctx.fill();
+      });
+
+      // Plošiny
+      platforms.forEach(p => {
+        if (p.type === "ground") {
+          ctx.fillStyle = "#27ae60";
+          ctx.fillRect(p.x, p.y, p.w, 15);
+          ctx.fillStyle = "#795548";
+          ctx.fillRect(p.x, p.y + 15, p.w, p.h - 15);
+        } else {
+          ctx.fillStyle = "#7f8c8d";
+          ctx.fillRect(p.x, p.y, p.w, p.h);
+          ctx.fillStyle = "#95a5a6";
+          ctx.fillRect(p.x, p.y, p.w, 4);
+        }
+      });
+
+      // Položky (jídlo)
+      items.forEach(it => {
+        if (!it.collected) {
+          ctx.fillStyle = it.type === "meat" ? "#e74c3c" : "#f1c40f";
+          ctx.beginPath();
+          ctx.arc(it.x + 10, it.y + 10, 9, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      });
+
+      // Nepřátelé (dinosauři / potvory)
+      enemies.forEach(en => {
+        if (!en.dead) {
+          ctx.fillStyle = "#9b59b6";
+          ctx.fillRect(en.x, en.y, en.w, en.h);
+          // Oči
+          ctx.fillStyle = "#fff";
+          const eyeOff = en.vx > 0 ? 20 : 4;
+          ctx.fillRect(en.x + eyeOff, en.y + 6, 6, 6);
+          ctx.fillStyle = "#000";
+          ctx.fillRect(en.x + eyeOff + (en.vx > 0 ? 3 : 1), en.y + 8, 3, 3);
+        }
+      });
+
+      // Hráč (Pravěký lovec)
+      ctx.fillStyle = "#d35400"; // Tělo / kůže
+      ctx.fillRect(player.x + 6, player.y + 14, 22, 34);
+
+      ctx.fillStyle = "#f39c12"; // Hlava
+      ctx.fillRect(player.x + 8, player.y, 18, 16);
+
+      ctx.fillStyle = "#000"; // Vousy / vlasy
+      ctx.fillRect(player.x + 4, player.y + 2, 24, 6);
+
+      // Kyj
+      if (player.isAttacking) {
+        ctx.fillStyle = "#5d4037";
+        if (player.facing === 1) {
+          ctx.fillRect(player.x + player.width, player.y + 18, 26, 10);
+          ctx.fillRect(player.x + player.width + 16, player.y + 12, 12, 22);
+        } else {
+          ctx.fillRect(player.x - 26, player.y + 18, 26, 10);
+          ctx.fillRect(player.x - 28, player.y + 12, 12, 22);
+        }
+      } else {
+        ctx.fillStyle = "#5d4037";
+        const cx = player.facing === 1 ? player.x + 22 : player.x - 4;
+        ctx.fillRect(cx, player.y + 10, 8, 22);
+      }
+
+      ctx.restore();
+    }
+
+    function loop() {
+      update();
+      draw();
+      requestAnimationFrame(loop);
+    }
+
+    requestAnimationFrame(loop);
+  </script>
+</body>
+</html>
