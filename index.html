@@ -342,7 +342,7 @@ const press = (id, fn) => {
   el.addEventListener("click", run);
 };
 
-const newGame = () => { Snd.init(); score=0; lives=3; levelIdx=0; loadLevel(0); state="play"; show(null); };
+const newGame = () => { Snd.init(); score=0; lives=800; levelIdx=0; loadLevel(0); state="play"; show(null); };
 press("bStart", newGame);
 press("bRetry", newGame);
 press("bResume", () => { state="play"; show(null); });
