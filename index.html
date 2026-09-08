@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-<title>Pravěký kyj</title>
+<title>Pračlověk</title>
 <style>
   *{box-sizing:border-box;margin:0;padding:0;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
   html,body{height:100%;overflow:hidden}
@@ -124,6 +124,20 @@
 <script>
 (() => {
 "use strict";
+
+/* ---------------- hlášení chyb (diagnostika na mobilu) ---------------- */
+window.addEventListener("error", ev => {
+  let box = document.getElementById("errBox");
+  if(!box){
+    box = document.createElement("div");
+    box.id = "errBox";
+    box.style.cssText = "position:fixed;left:0;right:0;top:0;z-index:999;background:#7d1a12;color:#fff;"
+      + "font:12px/1.4 monospace;padding:10px;white-space:pre-wrap;word-break:break-word;max-height:45%;overflow:auto";
+    document.body.appendChild(box);
+  }
+  box.textContent += "CHYBA: " + ev.message + "\n  " + (ev.filename||"").split("/").pop()
+    + " řádek " + ev.lineno + ":" + ev.colno + "\n";
+});
 
 /* ---------------- základ ---------------- */
 const cvs = document.getElementById("c");
@@ -319,16 +333,26 @@ const ov = {
 };
 const show = n => { for(const k in ov) ov[k].classList.toggle("show", k===n); };
 
-document.getElementById("bStart").onclick = () => { Snd.init(); score=0; lives=3; levelIdx=0; loadLevel(0); state="play"; show(null); };
-document.getElementById("bResume").onclick = () => { state="play"; show(null); };
-document.getElementById("bRetry").onclick = () => { Snd.init(); score=0; lives=3; levelIdx=0; loadLevel(0); state="play"; show(null); };
-document.getElementById("bNext").onclick = () => {
+// pozor: na některých mobilech "click" na overlay tlačítku vynechá – bereme i dotyk
+const press = (id, fn) => {
+  const el = document.getElementById(id);
+  let done = 0;
+  const run = e => { e.preventDefault(); if(Date.now()-done < 400) return; done = Date.now(); fn(); };
+  el.addEventListener("pointerup", run);
+  el.addEventListener("click", run);
+};
+
+const newGame = () => { Snd.init(); score=0; lives=3; levelIdx=0; loadLevel(0); state="play"; show(null); };
+press("bStart", newGame);
+press("bRetry", newGame);
+press("bResume", () => { state="play"; show(null); });
+press("bNext", () => {
   levelIdx++;
   if(levelIdx >= LEVELS.length){ score=0; lives=3; levelIdx=0; }
   loadLevel(levelIdx); state="play"; show(null);
-};
-document.getElementById("bPause").onclick = togglePause;
-document.getElementById("bSound").onclick = toggleSound;
+});
+press("bPause", togglePause);
+press("bSound", toggleSound);
 
 /* ---------------- přizpůsobení obrazovce ---------------- */
 const stageEl = document.getElementById("stage");
@@ -355,12 +379,15 @@ fit();
 const fullBtn = document.getElementById("bFull");
 const canFull = !!(document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen);
 if(!canFull) fullBtn.style.display = "none";   // iPhone Safari fullscreen API nemá
-fullBtn.onclick = () => {
+press("bFull", () => {
   const el = document.documentElement;
-  if(document.fullscreenElement || document.webkitFullscreenElement) (document.exitFullscreen || document.webkitExitFullscreen)?.call(document);
-  else (el.requestFullscreen || el.webkitRequestFullscreen)?.call(el);
+  if(document.fullscreenElement || document.webkitFullscreenElement){
+    (document.exitFullscreen || document.webkitExitFullscreen)?.call(document);
+  } else {
+    (el.requestFullscreen || el.webkitRequestFullscreen)?.call(el);
+  }
   setTimeout(fit, 300);
-};
+});
 
 function togglePause(){
   if(state==="play"){ state="pause"; show("pause"); }
@@ -445,22 +472,4 @@ function update(dt){
   // vodorovná kolize (jen pevná zem)
   player.x += player.vx*dt;
   for(const p of level.platforms){
-    if(!p.solid) continue;
-    if(player.x < p.x+p.w && player.x+player.w > p.x && player.y+player.h > p.y+6 && player.y < p.y+p.h){
-      if(player.vx > 0) player.x = p.x - player.w;
-      else if(player.vx < 0) player.x = p.x + p.w;
-      player.vx = 0;
-    }
-  }
-
-  // svislá kolize
-  const prevBottom = player.y + player.h;
-  player.y += player.vy*dt;
-  player.grounded = false; player.ride = null;
-  for(const p of level.platforms){
-    if(player.x+8 > p.x+p.w || player.x+player.w-8 < p.x) continue;
-    const bottom = player.y + player.h;
-    if(player.vy >= 0 && bottom >= p.y && prevBottom <= p.y + 14 + player.vy){
-      player.y = p.y - player.h; player.vy = 0; player.grounded = true;
-      if(p.move) player.ride = p;
-      if(!wasGrounded){ player.squash = .72; burst(player.x+player.w/2, player.y+player.
+    if(!p.solid
